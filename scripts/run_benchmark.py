@@ -34,7 +34,7 @@ for opt, arg in opts:
     elif opt == '-g':
         use_gpu = int(arg)
     elif opt == '-l':
-    	if int(opt) == 1:
+    	if int(arg) == 1:
     		per_layer_timing = True
 
 if model == '' or img_size == 0:
