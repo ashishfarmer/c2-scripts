@@ -26,8 +26,10 @@ from caffe2.python import (
 
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
-core.GlobalInit(['caffe2', '--caffe2_log_level=-50000000', '--caffe2_gpu_memory_tracking=0'])
+core.GlobalInit(['caffe2', '--caffe2_log_level=2', '--caffe2_gpu_memory_tracking=0'])
 print("Necessities imported!")
+
+use_legacy_pool_padding = True
 
 import requests
 import tarfile
@@ -235,18 +237,23 @@ def AddInput(model, batch_size, db, db_type):
     data = model.StopGradient(data, data)
     return data, label
 
-def update_dims(height, width, kernel, stride, pad):
-    new_height = math.ceil((height - kernel + 2*pad)/stride) + 1
-    new_width = math.ceil((width - kernel + 2*pad)/stride) + 1
-    return int(new_height), int(new_width)
+def update_dims(height, width, kernel, stride, pad, legacy_pad_flag=False):
+    if legacy_pad_flag == True:
+        new_height = math.ceil((height - kernel + 2*pad)/stride) + 1
+        new_width = math.ceil((width - kernel + 2*pad)/stride) + 1
+        return int(new_height), int(new_width)
+    else:
+        new_height = ((height - kernel + 2*pad)//stride) + 1
+        new_width = ((width - kernel + 2*pad)//stride) + 1
+        return new_height, new_width
 
 def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_width, image_channels):
     # Convolutional layer 1
     conv1 = brew.conv(model, data, 'conv1', dim_in=image_channels, dim_out=32, kernel=5, stride=1, pad=2)
     h,w = update_dims(height=image_height, width=image_width, kernel=5, stride=1, pad=2)
     # Pooling layer 1
-    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=3, stride=2, legacy_pad=3)
-    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
+    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=3, stride=2, legacy_pad=3 if use_legacy_pool_padding else 0)
+    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0, legacy_pad_flag=use_legacy_pool_padding)
     # ReLU layer 1
     relu1 = brew.relu(model, pool1, 'relu1')
     
@@ -256,8 +263,8 @@ def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_wid
     # ReLU layer 2
     relu2 = brew.relu(model, conv2, 'relu2')
     # Pooling layer 1
-    pool2 = brew.average_pool(model, relu2, 'pool2', kernel=3, stride=2, legacy_pad=3)
-    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
+    pool2 = brew.average_pool(model, relu2, 'pool2', kernel=3, stride=2, legacy_pad=3 if use_legacy_pool_padding else 0)
+    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0, legacy_pad_flag=use_legacy_pool_padding)
     
     # Convolutional layer 3
     conv3 = brew.conv(model, pool2, 'conv3', dim_in=32, dim_out=64, kernel=5, stride=1, pad=2)
@@ -265,8 +272,8 @@ def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_wid
     # ReLU layer 3
     relu3 = brew.relu(model, conv3, 'relu3')
     # Pooling layer 3
-    pool3 = brew.average_pool(model, relu3, 'pool3', kernel=3, stride=2, legacy_pad=3)
-    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
+    pool3 = brew.average_pool(model, relu3, 'pool3', kernel=3, stride=2, legacy_pad=3 if use_legacy_pool_padding else 0)
+    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0, legacy_pad_flag=use_legacy_pool_padding)
     
     # Fully connected layers
     fc1 = brew.fc(model, pool3, 'fc1', dim_in=64*h*w, dim_out=64)
@@ -290,24 +297,7 @@ def AddTrainingOperators(model, softmax, label):
         momentum=0.9,
         weight_decay=0.004
     )
-"""
-def AddTrainingOperators(model, softmax, label):
-    #Adds training operators to the model.
-    xent = model.LabelCrossEntropy([softmax, label], 'xent')
-    # compute the expected loss
-    loss = model.AveragedLoss(xent, "loss")
-    # track the accuracy of the model
-    AddAccuracy(model, softmax, label)
-    # use the average loss we just computed to add gradient operators to the model
-    model.AddGradientOperators([loss])
-    ITER = brew.iter(model, "iter")
-    LR = model.net.LearningRate(
-        ITER, "LR", base_lr=-0.0001, policy="step", stepsize=1, gamma=0.999)
-    ONE = model.param_init_net.ConstantFill([], "ONE", shape=[1], value=1.0)
-    for param in model.params:
-        param_grad = model.param_to_grad[param]
-        model.net.WeightedSum([param, ONE, param_grad, LR], param)
-"""
+
 def AddAccuracy(model, softmax, label):
     accuracy = brew.accuracy(model, [softmax, label], "accuracy")
     return accuracy
@@ -339,8 +329,6 @@ with core.DeviceScope(device):
     # Initialize with ModelHelper class
     train_model = model_helper.ModelHelper(
         name="train_net", arg_scope=arg_scope)
-    #train_model.param_init_net.RunAllOnGPU()
-    #train_model.net.RunAllOnGPU()
     # Add data layer from training_lmdb
     data, label = AddInput(
         train_model, batch_size=training_net_batch_size,
@@ -357,8 +345,6 @@ with core.DeviceScope(device):
     # Initialize with ModelHelper class without re-initializing params
     val_model = model_helper.ModelHelper(
         name="val_net", arg_scope=arg_scope, init_params=False)
-    #val_model.param_init_net.RunAllOnGPU()
-    #val_model.net.RunAllOnGPU()
     # Add data layer from validation_lmdb
     data, label = AddInput(
         val_model, batch_size=validation_images,
@@ -374,8 +360,6 @@ with core.DeviceScope(device):
     # Initialize with ModelHelper class without re-initializing params
     deploy_model = model_helper.ModelHelper(
         name="deploy_net", arg_scope=arg_scope, init_params=False)
-    #deploy_model.param_init_net.RunAllOnGPU()
-    #deploy_model.net.RunAllOnGPU()
     # Add model definition, expect input blob called "data"
     Add_Original_CIFAR10_Model(deploy_model, "data", num_classes, image_height, image_width, image_channels)
 
