@@ -26,10 +26,8 @@ from caffe2.python import (
 
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
-core.GlobalInit(['caffe2', '--caffe2_log_level=2', '--caffe2_gpu_memory_tracking=0'])
+core.GlobalInit(['caffe2', '--caffe2_log_level=-2', '--caffe2_gpu_memory_tracking=0'])
 print("Necessities imported!")
-
-use_legacy_pool_padding = True
 
 import requests
 import tarfile
@@ -207,7 +205,7 @@ image_channels = 3              # input image channels (3 for RGB)
 num_classes = 10                # number of image classes
 
 # Training params
-training_iters = 1000           # total training iterations
+training_iters = 2000           # total training iterations
 training_net_batch_size = 100   # batch size for training
 validation_images = 6000        # total number of validation images
 validation_interval = 100       # validate every <validation_interval> training iterations
@@ -237,23 +235,18 @@ def AddInput(model, batch_size, db, db_type):
     data = model.StopGradient(data, data)
     return data, label
 
-def update_dims(height, width, kernel, stride, pad, legacy_pad_flag=False):
-    if legacy_pad_flag == True:
-        new_height = math.ceil((height - kernel + 2*pad)/stride) + 1
-        new_width = math.ceil((width - kernel + 2*pad)/stride) + 1
-        return int(new_height), int(new_width)
-    else:
-        new_height = ((height - kernel + 2*pad)//stride) + 1
-        new_width = ((width - kernel + 2*pad)//stride) + 1
-        return new_height, new_width
+def update_dims(height, width, kernel, stride, pad):
+    new_height = ((height - kernel + 2*pad)//stride) + 1
+    new_width = ((width - kernel + 2*pad)//stride) + 1
+    return new_height, new_width
 
 def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_width, image_channels):
     # Convolutional layer 1
     conv1 = brew.conv(model, data, 'conv1', dim_in=image_channels, dim_out=32, kernel=5, stride=1, pad=2)
     h,w = update_dims(height=image_height, width=image_width, kernel=5, stride=1, pad=2)
     # Pooling layer 1
-    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=3, stride=2, legacy_pad=3 if use_legacy_pool_padding else 0)
-    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0, legacy_pad_flag=use_legacy_pool_padding)
+    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=3, stride=2)
+    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
     # ReLU layer 1
     relu1 = brew.relu(model, pool1, 'relu1')
     
@@ -263,8 +256,8 @@ def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_wid
     # ReLU layer 2
     relu2 = brew.relu(model, conv2, 'relu2')
     # Pooling layer 1
-    pool2 = brew.average_pool(model, relu2, 'pool2', kernel=3, stride=2, legacy_pad=3 if use_legacy_pool_padding else 0)
-    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0, legacy_pad_flag=use_legacy_pool_padding)
+    pool2 = brew.average_pool(model, relu2, 'pool2', kernel=3, stride=2)
+    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
     
     # Convolutional layer 3
     conv3 = brew.conv(model, pool2, 'conv3', dim_in=32, dim_out=64, kernel=5, stride=1, pad=2)
@@ -272,8 +265,8 @@ def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_wid
     # ReLU layer 3
     relu3 = brew.relu(model, conv3, 'relu3')
     # Pooling layer 3
-    pool3 = brew.average_pool(model, relu3, 'pool3', kernel=3, stride=2, legacy_pad=3 if use_legacy_pool_padding else 0)
-    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0, legacy_pad_flag=use_legacy_pool_padding)
+    pool3 = brew.average_pool(model, relu3, 'pool3', kernel=3, stride=2)
+    h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
     
     # Fully connected layers
     fc1 = brew.fc(model, pool3, 'fc1', dim_in=64*h*w, dim_out=64)
