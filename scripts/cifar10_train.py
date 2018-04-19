@@ -4,6 +4,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 from matplotlib import pyplot as plt
+import math
 import numpy as np
 import os
 import lmdb
@@ -235,16 +236,16 @@ def AddInput(model, batch_size, db, db_type):
     return data, label
 
 def update_dims(height, width, kernel, stride, pad):
-    new_height = ((height - kernel + 2*pad)//stride) + 1
-    new_width = ((width - kernel + 2*pad)//stride) + 1
-    return new_height, new_width
+    new_height = math.ceil((height - kernel + 2*pad)/stride) + 1
+    new_width = math.ceil((width - kernel + 2*pad)/stride) + 1
+    return int(new_height), int(new_width)
 
 def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_width, image_channels):
     # Convolutional layer 1
     conv1 = brew.conv(model, data, 'conv1', dim_in=image_channels, dim_out=32, kernel=5, stride=1, pad=2)
     h,w = update_dims(height=image_height, width=image_width, kernel=5, stride=1, pad=2)
     # Pooling layer 1
-    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=3, stride=2)
+    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=3, stride=2, legacy_pad=3)
     h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
     # ReLU layer 1
     relu1 = brew.relu(model, pool1, 'relu1')
@@ -255,7 +256,7 @@ def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_wid
     # ReLU layer 2
     relu2 = brew.relu(model, conv2, 'relu2')
     # Pooling layer 1
-    pool2 = brew.average_pool(model, relu2, 'pool2', kernel=3, stride=2)
+    pool2 = brew.average_pool(model, relu2, 'pool2', kernel=3, stride=2, legacy_pad=3)
     h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
     
     # Convolutional layer 3
@@ -264,7 +265,7 @@ def Add_Original_CIFAR10_Model(model, data, num_classes, image_height, image_wid
     # ReLU layer 3
     relu3 = brew.relu(model, conv3, 'relu3')
     # Pooling layer 3
-    pool3 = brew.average_pool(model, relu3, 'pool3', kernel=3, stride=2)
+    pool3 = brew.average_pool(model, relu3, 'pool3', kernel=3, stride=2, legacy_pad=3)
     h,w = update_dims(height=h, width=w, kernel=3, stride=2, pad=0)
     
     # Fully connected layers
